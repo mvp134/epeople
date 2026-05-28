@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>운명의 타격 좌표 돌림판</title>
+    <style>
+        body {
+            display: flex; flex-direction: column; align-items: center; 
+            font-family: 'Malgun Gothic', sans-serif; background-color: #2c3e50; color: white; padding: 40px 20px; margin: 0;
+        }
+        h2 { margin-bottom: 5px; text-align: center; }
+        
+        /* 돌림판 컨테이너 */
+        .wheel-wrapper { position: relative; margin: 30px 0 20px 0; display: flex; flex-direction: column; align-items: center; }
+        .pointer {
+            width: 0; height: 0; 
+            border-left: 20px solid transparent; border-right: 20px solid transparent; border-top: 40px solid #e74c3c;
+            margin-bottom: -15px; z-index: 10;
+        }
+        .wheel-container {
+            width: 320px; height: 320px; border-radius: 50%; border: 8px solid #ecf0f1; 
+            box-shadow: 0 0 15px rgba(0,0,0,0.5); overflow: hidden; position: relative;
+        }
+        .wheel {
+            width: 100%; height: 100%; position: absolute; top: 0; left: 0;
+            border-radius: 50%; transition: transform 4s cubic-bezier(0.1, 0.7, 0.1, 1);
+        }
+        
+        /* 돌림판 텍스트 (방사형 정렬 교정) */
+        .wheel-text {
+            position: absolute; top: 50%; left: 50%;
+            font-weight: bold; font-size: 16px; color: #fff; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);
+            white-space: nowrap;
+        }
+
+        /* 돌리기 버튼 (위치 이동 및 스타일 조정) */
+        .btn-spin {
+            background: #e67e22; color: white; border: none; padding: 15px 30px; border-radius: 10px; cursor: pointer; font-size: 22px; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.1s; width: 100%; max-width: 400px; margin: 10px 0;
+        }
+        .btn-spin:active { transform: scale(0.95); }
+        .btn-spin:hover { background: #d35400; }
+
+        /* 결과 표시창 */
+        #result { 
+            margin: 15px 0 25px 0; font-size: 24px; font-weight: bold; color: #f1c40f; text-align: center; min-height: 60px; 
+        }
+
+        /* 컨트롤 영역 */
+        .controls-container { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        .input-group { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.1); padding: 8px; border-radius: 8px; }
+        .input-group input { 
+            flex: 1; padding: 10px; border: none; border-radius: 5px; font-size: 15px; text-align: center; font-weight: bold;
+        }
+        .btn-delete { 
+            background: #c0392b; color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-weight: bold; 
+        }
+        .btn-delete:hover { background: #e74c3c; }
+        
+        .btn-add { background: #27ae60; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; margin-bottom: 30px; width: 100%; max-width: 400px; }
+        .btn-add:hover { background: #2ecc71; }
+    </style>
+</head>
+<body>
+
+    <h2>어디로 보낼까요?</h2>
+    
+    <div class="wheel-wrapper">
+        <div class="pointer"></div>
+        <div class="wheel-container">
+            <div class="wheel" id="wheel"></div>
+        </div>
+    </div>
+
+    <button class="btn-spin" onclick="spinWheel()">운명의 돌림판 돌리기!</button>
+
+    <div id="result">항목을 입력하고 돌려보세요!</div>
+
+    <div class="controls-container" id="controls">
+        </div>
+    
+    <button class="btn-add" onclick="addItem()">+ 새 항목 추가</button>
+
+    <script>
+        // 초기 데이터 세팅
+        let items = ["국무조정실", "금융위원회", "대통령비서실"];
+        const colors = ["#e74c3c", "#f1c40f", "#2ecc71", "#3498db", "#9b59b6", "#e67e22", "#1abc9c", "#34495e"];
+        let currentRotation = 0;
+        let isSpinning = false;
+
+        // 화면 렌더링
+        function render() {
+            renderControls();
+            renderWheel();
+        }
+
+        // 1. 입력칸 리스트 그리기
+        function renderControls() {
+            const controlsDiv = document.getElementById('controls');
+            controlsDiv.innerHTML = ""; 
+            
+            items.forEach((item, index) => {
+                const group = document.createElement('div');
+                group.className = 'input-group';
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = item;
+                input.oninput = (e) => updateItem(index, e.target.value);
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'btn-delete';
+                deleteBtn.innerText = '삭제';
+                deleteBtn.onclick = () => removeItem(index);
+                
+                group.appendChild(input);
+                group.appendChild(deleteBtn);
+                controlsDiv.appendChild(group);
+            });
+        }
+
+        // 2. 돌림판 파이 조각 & 텍스트 그리기 (글씨 정렬 완벽 교정)
+        function renderWheel() {
+            const wheel = document.getElementById('wheel');
+            wheel.innerHTML = ""; 
+            const total = items.length;
+            const sliceAngle = 360 / total;
+            
+            let gradientStr = [];
+            for (let i = 0; i < total; i++) {
+                const startAngle = i * sliceAngle;
+                const endAngle = (i + 1) * sliceAngle;
+                const color = colors[i % colors.length];
+                gradientStr.push(`${color} ${startAngle}deg ${endAngle}deg`);
+                
+                // 텍스트 배치
+                const textDiv = document.createElement('div');
+                textDiv.className = 'wheel-text';
+                textDiv.innerText = items[i];
+                
+                // 각 조각의 정중앙 각도 계산
+                const textRotation = startAngle + (sliceAngle / 2);
+                
+                // 텍스트가 바깥을 향해 방사형으로 뻗어나가도록 설정
+                // 글씨가 왼쪽(90도~270도)으로 넘어갈 때 거꾸로 뒤집히지 않도록 180도 회전 처리
+                let flip = (textRotation > 90 && textRotation < 270) ? 180 : 0;
+                
+                textDiv.style.transform = `translate(-50%, -50%) rotate(${textRotation - 90}deg) translateX(85px) rotate(${flip}deg)`;
+                
+                wheel.appendChild(textDiv);
+            }
+            wheel.style.background = `conic-gradient(${gradientStr.join(', ')})`;
+        }
+
+        // 데이터 업데이트
+        function updateItem(index, value) {
+            items[index] = value;
+            renderWheel();
+        }
+
+        function addItem() {
+            if(isSpinning) return;
+            items.push("새 항목");
+            render();
+        }
+
+        function removeItem(index) {
+            if(isSpinning) return;
+            if (items.length <= 2) {
+                alert("돌림판에는 최소 2개의 항목이 필요합니다.");
+                return;
+            }
+            items.splice(index, 1);
+            render();
+        }
+
+        // 회전 로직
+        function spinWheel() {
+            if (isSpinning) return;
+            isSpinning = true;
+            document.getElementById('result').innerText = "회전 중...";
+
+            const wheel = document.getElementById('wheel');
+            const spinAngle = Math.floor(Math.random() * 360) + 1800; // 최소 5바퀴 + 랜덤
+            currentRotation += spinAngle;
+            
+            wheel.style.transform = `rotate(${currentRotation}deg)`;
+
+            setTimeout(() => {
+                isSpinning = false;
+                showResult(currentRotation);
+            }, 4000);
+        }
+
+        // 결과 출력
+        function showResult(rotation) {
+            const total = items.length;
+            const sliceAngle = 360 / total;
+            
+            const normalizedRotation = (360 - (rotation % 360)) % 360;
+            const selectedIndex = Math.floor(normalizedRotation / sliceAngle);
+
+            const winningText = items[selectedIndex] || "빈 칸";
+            document.getElementById('result').innerHTML = `결과는 <b>[${winningText}]</b> 입니다!<br>지금 바로 국민신문고에 접속하세요.`;
+        }
+
+        render();
+    </script>
+</body>
+</html>
